@@ -1,0 +1,12 @@
+{
+  "presets": [
+    ["@babel/env", { "useBuiltIns": "usage", "corejs": "3.8.3" }],
+    "@babel/react",
+    "@babel/typescript"
+  ],
+  "plugins": [
+    ["import", { "libraryName": "antd", "style": "css" }],
+    "@babel/plugin-syntax-dynamic-import",
+    "@babel/plugin-transform-runtime"
+  ]
+}

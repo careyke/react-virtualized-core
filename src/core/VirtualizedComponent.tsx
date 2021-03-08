@@ -2,13 +2,13 @@ import React, {
   ComponentType,
   CSSProperties,
   FC,
-  ReactNode,
   UIEventHandler,
   useMemo,
   useRef,
   useState,
   createElement,
   useCallback,
+  ReactElement,
 } from "react";
 import memoizeOne from "memoize-one";
 
@@ -281,8 +281,8 @@ const VirtualizedComponent: FC<VirtualizedComponentProps> = (props) => {
     [renderStartIndex]
   );
 
-  const nodes = useMemo<ReactNode[]>(() => {
-    const items: ReactNode[] = [];
+  const nodes = useMemo<ReactElement[]>(() => {
+    let items: ReactElement[] = [];
     const keyMap: Map<number, number> = new Map<number, number>();
     for (let i = renderStartIndex; i <= renderEndIndex; i++) {
       const keyIndex = getItemKey(i);
@@ -297,7 +297,12 @@ const VirtualizedComponent: FC<VirtualizedComponentProps> = (props) => {
       });
       items[keyIndex] = element;
     }
-    console.log(renderStartIndex, renderEndIndex);
+    // console.log("*******************");
+    // console.log("start:", renderStartIndex, "end:", renderEndIndex);
+    items = items.filter((v) => {
+      // console.log(v.key, v.props.index);
+      return v;
+    });
     lastRenderedIndexRef.current = {
       renderStartIndex,
       renderEndIndex,

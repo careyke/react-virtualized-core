@@ -6,10 +6,14 @@ const App: FC = () => {
   return (
     <VirtualizedComponent
       width={400}
-      height={600}
-      itemCount={1000}
+      height={555}
+      itemCount={300}
       itemSize={40}
-    ></VirtualizedComponent>
+    >
+      {({ index, style }) => {
+        return <div style={style}>{`Row:${index}`}</div>;
+      }}
+    </VirtualizedComponent>
   );
 };
 

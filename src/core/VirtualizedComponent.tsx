@@ -9,6 +9,7 @@ import React, {
   createElement,
   useCallback,
   ReactElement,
+  RefObject,
 } from "react";
 import memoizeOne from "memoize-one";
 
@@ -51,13 +52,13 @@ export interface VirtualizedComponentProps {
   children: ComponentType<RenderItemProps>;
   direction?: "vertical" | "horizontal";
   overscanCount?: number;
+  innerRef?: RefObject<HTMLDivElement> | null;
 }
 
 const containerBaseStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   overflow: "auto",
-  border: "1px solid #aaaaaa",
 };
 const bodyBaseStyle: CSSProperties = {
   display: "flex",
@@ -136,6 +137,7 @@ const VirtualizedComponent: FC<VirtualizedComponentProps> = (props) => {
     overscanCount = 5,
     direction = "vertical",
     children,
+    innerRef,
   } = props;
   const [scrollConfig, setScrollConfig] = useState<ScrollConfig>({
     scrollDirection: "forward",
@@ -148,7 +150,8 @@ const VirtualizedComponent: FC<VirtualizedComponentProps> = (props) => {
   // 记录运算的时候与keyIndex相关的值
   const keyIndexRef = useRef<KeyIndexConfig>({
     lastKeyIndexMap: new Map<number, number>(),
-    count: 0,
+    count: 0, // 当前使用到的keyIndex，目前是慢慢叠加，需要考虑固定范围
+    releaseIndexConfig: undefined, // 和上次对比，销毁的节点对应的index
   });
   const { isVertical, visibleSize, countSize } = useMemo(() => {
     let visibleSize = 0;
@@ -244,8 +247,10 @@ const VirtualizedComponent: FC<VirtualizedComponentProps> = (props) => {
           position: "absolute",
           height: isVertical ? itemSize : undefined,
           width: isVertical ? undefined : itemSize,
-          top: isVertical ? index * itemSize : undefined,
-          left: isVertical ? undefined : index * itemSize,
+          top: isVertical ? index * itemSize : 0,
+          left: isVertical ? 0 : index * itemSize,
+          right: isVertical ? 0 : undefined,
+          bottom: isVertical ? undefined : 0,
         };
         cacheStyle[index] = style;
         return style;
@@ -299,10 +304,7 @@ const VirtualizedComponent: FC<VirtualizedComponentProps> = (props) => {
     }
     // console.log("*******************");
     // console.log("start:", renderStartIndex, "end:", renderEndIndex);
-    items = items.filter((v) => {
-      // console.log(v.key, v.props.index);
-      return v;
-    });
+    items = items.filter((v) => v);
     lastRenderedIndexRef.current = {
       renderStartIndex,
       renderEndIndex,
@@ -314,7 +316,9 @@ const VirtualizedComponent: FC<VirtualizedComponentProps> = (props) => {
 
   return (
     <div style={containerStyle} onScroll={handleScroll}>
-      <div style={bodyStyle}>{nodes}</div>
+      <div style={bodyStyle} ref={innerRef}>
+        {nodes}
+      </div>
     </div>
   );
 };

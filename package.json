@@ -77,11 +77,14 @@
     "@types/react": "^17.0.0",
     "@types/react-dom": "^17.0.0",
     "@types/react-router-dom": "^5.1.7",
+    "@types/react-window": "^1.8.2",
+    "antd": "^4.13.1",
     "classnames": "^2.2.6",
     "memoize-one": "^5.1.1",
     "react": "^17.0.1",
     "react-dom": "^17.0.1",
-    "react-router-dom": "^5.2.0"
+    "react-router-dom": "^5.2.0",
+    "react-window": "^1.8.6"
   },
   "husky": {
     "hooks": {

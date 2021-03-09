@@ -1,19 +1,19 @@
 import React, { FC } from "react";
 
-import VirtualizedComponent from "./core/VirtualizedComponent";
+import classes from "./App.less";
+import MutativeKeyVirtualizedList from "./examples/MutativeKeyVirtualizedList";
+import StableKeyVirtualizedList from "./examples/StableKeyVirtualizedList";
 
 const App: FC = () => {
   return (
-    <VirtualizedComponent
-      width={400}
-      height={555}
-      itemCount={300}
-      itemSize={40}
-    >
-      {({ index, style }) => {
-        return <div style={style}>{`Row:${index}`}</div>;
-      }}
-    </VirtualizedComponent>
+    <div className={classes.container}>
+      <div className={classes.item}>
+        <StableKeyVirtualizedList />
+      </div>
+      <div className={classes.item}>
+        <MutativeKeyVirtualizedList />
+      </div>
+    </div>
   );
 };
 

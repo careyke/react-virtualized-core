@@ -12,7 +12,7 @@ import React, {
 } from "react";
 import memoizeOne from "memoize-one";
 
-import { useKeyIndex } from "./keyIndexHook";
+import { useKeyIndex, RenderIndexConfig } from "./keyIndexHook";
 
 type ScrollDirection = "forward" | "backward";
 
@@ -25,11 +25,6 @@ interface RenderItemProps {
   index: number;
   style: CSSProperties;
 }
-interface RenderIndexConfig {
-  renderStartIndex: number;
-  renderEndIndex: number;
-}
-
 interface IndexConfig extends RenderIndexConfig {
   visibleStartIndex: number;
   visibleEndIndex: number;
@@ -214,35 +209,10 @@ const VirtualizedComponent: FC<VirtualizedComponentProps> = (props) => {
     [direction, isVertical, itemSize]
   );
 
-  // /**
-  //  * 获取每个子项的key
-  //  */
-  // const getItemKey = useCallback(
-  //   (index: number): number => {
-  //     const {
-  //       lastKeyIndexMap,
-  //       count,
-  //       releaseIndexConfig,
-  //     } = keyIndexRef.current;
-  //     const lastKeyIndex = lastKeyIndexMap.get(index);
-  //     if (lastKeyIndex != null) return lastKeyIndex;
-  //     if (releaseIndexConfig) {
-  //       const { currentIndex, endIndex } = releaseIndexConfig;
-  //       if (currentIndex <= endIndex) {
-  //         releaseIndexConfig.currentIndex++;
-  //         return lastKeyIndexMap.get(currentIndex) as number;
-  //       } else {
-  //         keyIndexRef.current.count++;
-  //         return count;
-  //       }
-  //     }
-  //     return index - renderStartIndex;
-  //   },
-  //   [renderStartIndex]
-  // );
-
   const nodes = useMemo<ReactElement[]>(() => {
     let items: ReactElement[] = [];
+    // console.log("*******************");
+    // console.log("start:", renderStartIndex, "end:", renderEndIndex);
     for (let i = renderStartIndex; i <= renderEndIndex; i++) {
       const keyIndex = getItemKeyIndex(i);
 
@@ -255,8 +225,7 @@ const VirtualizedComponent: FC<VirtualizedComponentProps> = (props) => {
       });
       items[keyIndex] = element;
     }
-    // console.log("*******************");
-    // console.log("start:", renderStartIndex, "end:", renderEndIndex);
+    // 考虑优化，空位置的优化
     items = items.filter((v) => v);
     return items;
   }, [

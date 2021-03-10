@@ -8,11 +8,11 @@ import { useMemo, useRef } from "react";
 interface KeyIndexConfig {
   lastKeyIndexMap: Map<number, number>; // 缓存每个item的index与key之间的映射关系
   maxKeyIndex: number; // 当前用到的最大的keyIndex
-  recycledKeyIndex: number[]; // 回收的keyIndex
+  recycledKeyIndex: number[]; // 回收的keyIndex, 需要后进先出
   // lastReleaseKeyIndex: LastReleaseKeyIndexConfig; // 上个快照到当前快照释放的keyIndex
 }
 
-interface RenderIndexConfig {
+export interface RenderIndexConfig {
   renderStartIndex: number;
   renderEndIndex: number;
 }
@@ -52,15 +52,18 @@ export const useKeyIndex = (
         maxKeyIndex: renderEndIndex - renderStartIndex + 1,
         recycledKeyIndex: [],
       };
-    } else if (renderStartIndex <= lastRenderEndIndex) {
-      // forward
+    }
+    // 下面两种是互斥行为
+    if (renderStartIndex > lastRenderStartIndex) {
+      // 回收上面销毁的节点
       const { lastKeyIndexMap, recycledKeyIndex } = keyIndexRef.current;
       for (let i = lastRenderStartIndex; i < renderStartIndex; i++) {
         const lastKeyIndex = lastKeyIndexMap.get(i) as number;
         recycledKeyIndex.push(lastKeyIndex);
       }
-    } else {
-      // backward
+    }
+    if (renderEndIndex < lastRenderEndIndex) {
+      // 收回下面销毁的节点
       const { lastKeyIndexMap, recycledKeyIndex } = keyIndexRef.current;
       for (let i = renderEndIndex + 1; i <= lastRenderEndIndex; i++) {
         const lastKeyIndex = lastKeyIndexMap.get(i) as number;
@@ -80,7 +83,7 @@ export const useKeyIndex = (
         keyIndex = lastKeyIndex;
       } else if (lastKeyIndexMap.size > 0) {
         if (recycledKeyIndex.length > 0) {
-          keyIndex = recycledKeyIndex.shift() as number;
+          keyIndex = recycledKeyIndex.pop() as number;
         } else {
           keyIndex = maxKeyIndex;
           keyIndexRef.current.maxKeyIndex++;
@@ -88,6 +91,7 @@ export const useKeyIndex = (
       }
       newKeyIndexMap.set(index, keyIndex);
       if (index === renderEndIndex) {
+        // console.log(newKeyIndexMap, recycledKeyIndex);
         keyIndexRef.current.lastKeyIndexMap = newKeyIndexMap;
       }
       return keyIndex;

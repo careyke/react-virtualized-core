@@ -7,11 +7,17 @@ import StableKeyVirtualizedList from "./examples/StableKeyVirtualizedList";
 const App: FC = () => {
   return (
     <div className={classes.container}>
-      <div className={classes.item}>
-        <StableKeyVirtualizedList />
+      <div>
+        <div>StableKey</div>
+        <div className={classes.item}>
+          <StableKeyVirtualizedList />
+        </div>
       </div>
-      <div className={classes.item}>
-        <MutativeKeyVirtualizedList />
+      <div>
+        <div>MutativeKey</div>
+        <div className={classes.item}>
+          <MutativeKeyVirtualizedList />
+        </div>
       </div>
     </div>
   );

@@ -6,7 +6,14 @@ import React, {
   useMemo,
   UIEventHandler,
   useRef,
+  ReactElement,
+  createElement,
+  useCallback,
+  RefObject,
 } from "react";
+import memoizeOne from "memoize-one";
+
+import { useKeyIndex } from "./keyIndexHook";
 
 type Direction = "vertical" | "horizontal";
 
@@ -41,6 +48,7 @@ export interface VariableSizeVirtualizedComponentProps {
   direction?: Direction;
   overscanCount?: number;
   estimatedSize?: number;
+  innerRef?: RefObject<HTMLDivElement> | null;
 }
 
 const containerBaseStyle: CSSProperties = {
@@ -54,6 +62,12 @@ const bodyBaseStyle: CSSProperties = {
   flexShrink: 0,
 };
 
+const _getCacheItemStyle = memoizeOne<(...args: unknown[]) => CommonObject>(
+  () => {
+    return {} as CommonObject;
+  }
+);
+
 const VariableSizeVirtualizedComponent: FC<VariableSizeVirtualizedComponentProps> = (
   props
 ) => {
@@ -65,6 +79,8 @@ const VariableSizeVirtualizedComponent: FC<VariableSizeVirtualizedComponentProps
     direction = "vertical",
     overscanCount = 5,
     estimatedSize = 50,
+    children,
+    innerRef,
   } = props;
   const [scrollConfig, setScrollConfig] = useState<ScrollConfig>({
     scrollDirection: "forward",
@@ -86,32 +102,35 @@ const VariableSizeVirtualizedComponent: FC<VariableSizeVirtualizedComponentProps
     sizeAndOffestCache: new Map<number, SizeAndOffsetCache>(),
   });
 
-  const getItemSizeAndOffset = (index: number): SizeAndOffsetCache => {
-    const {
-      lastMeasuredIndex,
-      sizeAndOffestCache,
-    } = itemSizeAndOffsetRef.current;
-    if (lastMeasuredIndex >= index) {
+  const getItemSizeAndOffset = useCallback(
+    (index: number): SizeAndOffsetCache => {
+      const {
+        lastMeasuredIndex,
+        sizeAndOffestCache,
+      } = itemSizeAndOffsetRef.current;
+      if (lastMeasuredIndex >= index) {
+        return sizeAndOffestCache.get(index)!;
+      }
+      let offset = 0;
+      if (lastMeasuredIndex >= 0) {
+        const { size, offset: lastOffset } = sizeAndOffestCache.get(
+          lastMeasuredIndex
+        )!;
+        offset = size + lastOffset;
+      }
+      for (let i = lastMeasuredIndex + 1; i <= index; i++) {
+        const size = itemSizeGetter(i);
+        sizeAndOffestCache.set(i, {
+          offset,
+          size,
+        });
+        offset += size;
+      }
+      itemSizeAndOffsetRef.current.lastMeasuredIndex = index;
       return sizeAndOffestCache.get(index)!;
-    }
-    let offset = 0;
-    if (lastMeasuredIndex > 0) {
-      const { size, offset: lastOffset } = sizeAndOffestCache.get(
-        lastMeasuredIndex
-      )!;
-      offset = size + lastOffset;
-    }
-    for (let i = lastMeasuredIndex + 1; i <= index; i++) {
-      const size = itemSizeGetter(i);
-      sizeAndOffestCache.set(i, {
-        offset,
-        size,
-      });
-      offset += size;
-    }
-    itemSizeAndOffsetRef.current.lastMeasuredIndex = index;
-    return sizeAndOffestCache.get(index)!;
-  };
+    },
+    [itemSizeGetter]
+  );
 
   /**
    * 二分查找 O(logn)
@@ -171,7 +190,9 @@ const VariableSizeVirtualizedComponent: FC<VariableSizeVirtualizedComponentProps
       lastMeasuredIndex,
     } = itemSizeAndOffsetRef.current;
     const lastMeasuredOffset =
-      lastMeasuredIndex > 0 ? sizeAndOffestCache.get(lastMeasuredIndex)! : 0;
+      lastMeasuredIndex > 0
+        ? sizeAndOffestCache.get(lastMeasuredIndex)!.offset
+        : 0;
     if (lastMeasuredOffset >= scrollOffest) {
       // 查找已缓存的结果
       return findNearestItemIndexByBinarySearch(
@@ -188,7 +209,6 @@ const VariableSizeVirtualizedComponent: FC<VariableSizeVirtualizedComponentProps
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getRenderedItemIndex = () => {
     const { scrollOffset, scrollDirection } = scrollConfig;
     const visibleStartIndex = findNearestItemIndex(scrollOffset);
@@ -234,6 +254,29 @@ const VariableSizeVirtualizedComponent: FC<VariableSizeVirtualizedComponentProps
     }
   };
 
+  const getItemStyle = useCallback(
+    (index: number): CSSProperties => {
+      const cacheStyle = _getCacheItemStyle(itemCount, direction); // 参数需要仔细考虑
+      if (cacheStyle[index]) {
+        return cacheStyle[index];
+      } else {
+        const { offset, size } = getItemSizeAndOffset(index);
+        const style: CSSProperties = {
+          position: "absolute",
+          height: isVertical ? size : undefined,
+          width: isVertical ? undefined : size,
+          top: isVertical ? offset : 0,
+          left: isVertical ? 0 : offset,
+          right: isVertical ? 0 : undefined,
+          bottom: isVertical ? undefined : 0,
+        };
+        cacheStyle[index] = style;
+        return style;
+      }
+    },
+    [direction, isVertical, itemCount, getItemSizeAndOffset]
+  );
+
   const handleScroll: UIEventHandler<HTMLDivElement> = (e) => {
     const { scrollTop, scrollLeft } = e.currentTarget;
     if (isVertical) {
@@ -255,6 +298,32 @@ const VariableSizeVirtualizedComponent: FC<VariableSizeVirtualizedComponentProps
     }
   };
 
+  const { renderStartIndex, renderEndIndex } = getRenderedItemIndex();
+  const { getItemKeyIndex } = useKeyIndex(renderStartIndex, renderEndIndex);
+
+  const nodes = useMemo<ReactElement[]>(() => {
+    let items: ReactElement[] = [];
+    for (let i = renderStartIndex; i <= renderEndIndex; i++) {
+      const keyIndex = getItemKeyIndex(i);
+      const style = getItemStyle(i);
+      const element = createElement(children, {
+        key: `key${keyIndex}`,
+        index: i,
+        style,
+      });
+      items[keyIndex] = element;
+    }
+    // 考虑优化，空位置的优化
+    items = items.filter((v) => v);
+    return items;
+  }, [
+    renderStartIndex,
+    renderEndIndex,
+    children,
+    getItemKeyIndex,
+    getItemStyle,
+  ]);
+
   const containerStyle: CSSProperties = {
     ...containerBaseStyle,
     width,
@@ -269,7 +338,9 @@ const VariableSizeVirtualizedComponent: FC<VariableSizeVirtualizedComponentProps
 
   return (
     <div style={containerStyle} onScroll={handleScroll}>
-      <div style={bodyStyle}></div>
+      <div ref={innerRef} style={bodyStyle}>
+        {nodes}
+      </div>
     </div>
   );
 };

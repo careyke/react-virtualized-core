@@ -8,35 +8,33 @@ import React, {
   useRef,
   ReactElement,
   createElement,
-  useCallback,
   RefObject,
 } from "react";
 import memoizeOne from "memoize-one";
 
 import { useKeyIndex } from "./keyIndexHook";
+import { Direction, ScrollConfig, RenderItemProps } from "./type";
 
-type Direction = "vertical" | "horizontal";
+type ItemSizeGetter = (index: number) => number;
 
-type ScrollDirection = "forward" | "backward";
-
-interface ScrollConfig {
-  scrollDirection: ScrollDirection;
-  scrollOffset: number;
-}
-
-interface RenderItemProps {
-  index: number;
-  style: CSSProperties;
-}
-
-interface SizeAndOffsetCache {
+interface SizeAndOffsetConfig {
   size: number;
   offset: number;
 }
 
 interface ItemSizeAndOffsetConfig {
   lastMeasuredIndex: number;
-  sizeAndOffestCache: Map<number, SizeAndOffsetCache>;
+  sizeAndOffestMap: Map<number, SizeAndOffsetConfig>;
+}
+
+interface Payload {
+  itemCount: number;
+  overscanCount: number;
+  visibleSize: number;
+  isVertical: boolean;
+  direction: Direction;
+  itemSizeGetter: ItemSizeGetter;
+  itemSizeAndOffsetCache: ItemSizeAndOffsetConfig;
 }
 
 export interface VariableSizeVirtualizedComponentProps {
@@ -67,6 +65,161 @@ const _getCacheItemStyle = memoizeOne<(...args: unknown[]) => CommonObject>(
     return {} as CommonObject;
   }
 );
+
+const getItemSizeAndOffset = (
+  index: number,
+  payload: Payload
+): SizeAndOffsetConfig => {
+  const { itemSizeAndOffsetCache, itemSizeGetter } = payload;
+  const { lastMeasuredIndex, sizeAndOffestMap } = itemSizeAndOffsetCache;
+  if (lastMeasuredIndex >= index) {
+    return sizeAndOffestMap.get(index)!;
+  }
+  let offset = 0;
+  if (lastMeasuredIndex >= 0) {
+    const { size, offset: lastOffset } = sizeAndOffestMap.get(
+      lastMeasuredIndex
+    )!;
+    offset = size + lastOffset;
+  }
+  for (let i = lastMeasuredIndex + 1; i <= index; i++) {
+    const size = itemSizeGetter(i);
+    sizeAndOffestMap.set(i, {
+      offset,
+      size,
+    });
+    offset += size;
+  }
+  itemSizeAndOffsetCache.lastMeasuredIndex = index;
+  return sizeAndOffestMap.get(index)!;
+};
+
+/**
+ * 二分查找 O(logn)
+ * @param start
+ * @param end
+ * @param scrollOffest
+ * @returns
+ */
+const findNearestItemIndexByBinarySearch = (
+  start: number,
+  end: number,
+  scrollOffest: number,
+  payload: Payload
+): number => {
+  while (start <= end) {
+    const mid = Math.floor((start + end) / 2);
+    const midOffset = getItemSizeAndOffset(mid, payload).offset;
+    if (midOffset === scrollOffest) {
+      return mid;
+    } else if (midOffset < scrollOffest) {
+      start = mid + 1;
+    } else {
+      end = mid - 1;
+    }
+  }
+  if (start > 0) {
+    return start - 1;
+  } else {
+    return 0;
+  }
+};
+
+/**
+ * 指数查找
+ * @param index
+ * @param scrollOffset
+ * @returns
+ */
+const findNearestItemIndexByExponentialSearch = (
+  index: number,
+  scrollOffset: number,
+  payload: Payload
+) => {
+  const { itemCount } = payload;
+  let interval = 1;
+  while (
+    index + interval < itemCount &&
+    getItemSizeAndOffset(index + interval, payload).offset < scrollOffset
+  ) {
+    interval *= 2;
+  }
+  const start = index + Math.floor(interval / 2);
+  const end = Math.min(itemCount - 1, start + interval);
+  return findNearestItemIndexByBinarySearch(start, end, scrollOffset, payload);
+};
+
+const findNearestItemIndex = (scrollOffest: number, payload: Payload) => {
+  const { itemSizeAndOffsetCache } = payload;
+  const { sizeAndOffestMap, lastMeasuredIndex } = itemSizeAndOffsetCache;
+  const lastMeasuredOffset =
+    lastMeasuredIndex > 0 ? sizeAndOffestMap.get(lastMeasuredIndex)!.offset : 0;
+  if (lastMeasuredOffset >= scrollOffest) {
+    // 查找已缓存的结果
+    return findNearestItemIndexByBinarySearch(
+      0,
+      lastMeasuredIndex,
+      scrollOffest,
+      payload
+    );
+  } else {
+    // 查找未缓存的结果
+    return findNearestItemIndexByExponentialSearch(
+      lastMeasuredIndex,
+      scrollOffest,
+      payload
+    );
+  }
+};
+
+const getRenderedItemIndex = (scrollConfig: ScrollConfig, payload: Payload) => {
+  const { scrollOffset, scrollDirection } = scrollConfig;
+  const { itemCount, overscanCount, visibleSize } = payload;
+  const visibleStartIndex = findNearestItemIndex(scrollOffset, payload);
+
+  const { offset, size } = getItemSizeAndOffset(visibleStartIndex, payload)!;
+  let distance = offset + size;
+  let visibleEndIndex = visibleStartIndex;
+  while (
+    visibleEndIndex < itemCount - 1 &&
+    distance < scrollOffset + visibleSize
+  ) {
+    visibleEndIndex++;
+    distance += getItemSizeAndOffset(visibleEndIndex, payload).size;
+  }
+  if (scrollDirection === "forward") {
+    return {
+      renderStartIndex: visibleStartIndex,
+      renderEndIndex: Math.min(visibleEndIndex + overscanCount, itemCount - 1),
+    };
+  } else {
+    return {
+      renderStartIndex: Math.max(0, visibleStartIndex - overscanCount),
+      renderEndIndex: visibleEndIndex,
+    };
+  }
+};
+
+const getItemStyle = (index: number, payload: Payload): CSSProperties => {
+  const { itemCount, direction, isVertical } = payload;
+  const cacheStyle = _getCacheItemStyle(itemCount, direction); // 参数需要仔细考虑
+  if (cacheStyle[index]) {
+    return cacheStyle[index];
+  } else {
+    const { offset, size } = getItemSizeAndOffset(index, payload);
+    const style: CSSProperties = {
+      position: "absolute",
+      height: isVertical ? size : undefined,
+      width: isVertical ? undefined : size,
+      top: isVertical ? offset : 0,
+      left: isVertical ? 0 : offset,
+      right: isVertical ? 0 : undefined,
+      bottom: isVertical ? undefined : 0,
+    };
+    cacheStyle[index] = style;
+    return style;
+  }
+};
 
 const VariableSizeVirtualizedComponent: FC<VariableSizeVirtualizedComponentProps> = (
   props
@@ -99,183 +252,50 @@ const VariableSizeVirtualizedComponent: FC<VariableSizeVirtualizedComponentProps
   }, [direction, height, width]);
   const itemSizeAndOffsetRef = useRef<ItemSizeAndOffsetConfig>({
     lastMeasuredIndex: -1,
-    sizeAndOffestCache: new Map<number, SizeAndOffsetCache>(),
+    sizeAndOffestMap: new Map<number, SizeAndOffsetConfig>(),
   });
-
-  const getItemSizeAndOffset = useCallback(
-    (index: number): SizeAndOffsetCache => {
-      const {
-        lastMeasuredIndex,
-        sizeAndOffestCache,
-      } = itemSizeAndOffsetRef.current;
-      if (lastMeasuredIndex >= index) {
-        return sizeAndOffestCache.get(index)!;
-      }
-      let offset = 0;
-      if (lastMeasuredIndex >= 0) {
-        const { size, offset: lastOffset } = sizeAndOffestCache.get(
-          lastMeasuredIndex
-        )!;
-        offset = size + lastOffset;
-      }
-      for (let i = lastMeasuredIndex + 1; i <= index; i++) {
-        const size = itemSizeGetter(i);
-        sizeAndOffestCache.set(i, {
-          offset,
-          size,
-        });
-        offset += size;
-      }
-      itemSizeAndOffsetRef.current.lastMeasuredIndex = index;
-      return sizeAndOffestCache.get(index)!;
-    },
-    [itemSizeGetter]
+  const payload = useMemo<Payload>(() => {
+    return {
+      itemSizeGetter,
+      overscanCount,
+      visibleSize,
+      itemCount,
+      isVertical,
+      direction,
+      itemSizeAndOffsetCache: itemSizeAndOffsetRef.current,
+    };
+  }, [
+    itemSizeGetter,
+    overscanCount,
+    visibleSize,
+    itemCount,
+    isVertical,
+    direction,
+  ]);
+  const { renderStartIndex, renderEndIndex } = getRenderedItemIndex(
+    scrollConfig,
+    payload
   );
-
-  /**
-   * 二分查找 O(logn)
-   * @param start
-   * @param end
-   * @param scrollOffest
-   * @returns
-   */
-  const findNearestItemIndexByBinarySearch = (
-    start: number,
-    end: number,
-    scrollOffest: number
-  ) => {
-    while (start <= end) {
-      const mid = Math.floor((start + end) / 2);
-      const midOffset = getItemSizeAndOffset(mid).offset;
-      if (midOffset === scrollOffest) {
-        return mid;
-      } else if (midOffset < scrollOffest) {
-        start = mid + 1;
-      } else {
-        end = mid - 1;
-      }
-    }
-    if (start > 0) {
-      return start - 1;
-    } else {
-      return 0;
-    }
-  };
-
-  /**
-   * 指数查找
-   * @param index
-   * @param scrollOffset
-   * @returns
-   */
-  const findNearestItemIndexByExponentialSearch = (
-    index: number,
-    scrollOffset: number
-  ) => {
-    let interval = 1;
-    while (
-      index + interval < itemCount &&
-      getItemSizeAndOffset(index + interval).offset < scrollOffset
-    ) {
-      interval *= 2;
-    }
-    const start = index + Math.floor(interval / 2);
-    const end = Math.min(itemCount - 1, start + interval);
-    return findNearestItemIndexByBinarySearch(start, end, scrollOffset);
-  };
-
-  const findNearestItemIndex = (scrollOffest: number) => {
-    const {
-      sizeAndOffestCache,
-      lastMeasuredIndex,
-    } = itemSizeAndOffsetRef.current;
-    const lastMeasuredOffset =
-      lastMeasuredIndex > 0
-        ? sizeAndOffestCache.get(lastMeasuredIndex)!.offset
-        : 0;
-    if (lastMeasuredOffset >= scrollOffest) {
-      // 查找已缓存的结果
-      return findNearestItemIndexByBinarySearch(
-        0,
-        lastMeasuredIndex,
-        scrollOffest
-      );
-    } else {
-      // 查找未缓存的结果
-      return findNearestItemIndexByExponentialSearch(
-        lastMeasuredIndex,
-        scrollOffest
-      );
-    }
-  };
-
-  const getRenderedItemIndex = () => {
-    const { scrollOffset, scrollDirection } = scrollConfig;
-    const visibleStartIndex = findNearestItemIndex(scrollOffset);
-
-    const { offset, size } = getItemSizeAndOffset(visibleStartIndex)!;
-    let distance = offset + size;
-    let visibleEndIndex = visibleStartIndex;
-    while (
-      visibleEndIndex < itemCount - 1 &&
-      distance < scrollOffset + visibleSize
-    ) {
-      visibleEndIndex++;
-      distance += getItemSizeAndOffset(visibleEndIndex).size;
-    }
-    if (scrollDirection === "forward") {
-      return {
-        renderStartIndex: visibleStartIndex,
-        renderEndIndex: Math.min(
-          visibleEndIndex + overscanCount,
-          itemCount - 1
-        ),
-      };
-    } else {
-      return {
-        renderStartIndex: Math.max(0, visibleStartIndex - overscanCount),
-        renderEndIndex: visibleEndIndex,
-      };
-    }
-  };
+  const { getItemKeyIndex } = useKeyIndex(renderStartIndex, renderEndIndex);
 
   const getBodySize = () => {
     const {
       lastMeasuredIndex,
-      sizeAndOffestCache,
+      sizeAndOffestMap,
     } = itemSizeAndOffsetRef.current;
-    if (lastMeasuredIndex >= 0) {
-      const { offset, size } = sizeAndOffestCache.get(lastMeasuredIndex)!;
-      return (
-        offset + size + (itemCount - 1 - lastMeasuredIndex) * estimatedSize
-      );
+    let measuredIndex = lastMeasuredIndex;
+    if (lastMeasuredIndex >= itemCount) {
+      // 修改lastMeasuredIndex
+      itemSizeAndOffsetRef.current.lastMeasuredIndex = itemCount - 1;
+      measuredIndex = itemCount - 1;
+    }
+    if (measuredIndex >= 0) {
+      const { offset, size } = sizeAndOffestMap.get(measuredIndex)!;
+      return offset + size + (itemCount - 1 - measuredIndex) * estimatedSize;
     } else {
       return estimatedSize * itemCount;
     }
   };
-
-  const getItemStyle = useCallback(
-    (index: number): CSSProperties => {
-      const cacheStyle = _getCacheItemStyle(itemCount, direction); // 参数需要仔细考虑
-      if (cacheStyle[index]) {
-        return cacheStyle[index];
-      } else {
-        const { offset, size } = getItemSizeAndOffset(index);
-        const style: CSSProperties = {
-          position: "absolute",
-          height: isVertical ? size : undefined,
-          width: isVertical ? undefined : size,
-          top: isVertical ? offset : 0,
-          left: isVertical ? 0 : offset,
-          right: isVertical ? 0 : undefined,
-          bottom: isVertical ? undefined : 0,
-        };
-        cacheStyle[index] = style;
-        return style;
-      }
-    },
-    [direction, isVertical, itemCount, getItemSizeAndOffset]
-  );
 
   const handleScroll: UIEventHandler<HTMLDivElement> = (e) => {
     const { scrollTop, scrollLeft } = e.currentTarget;
@@ -298,14 +318,12 @@ const VariableSizeVirtualizedComponent: FC<VariableSizeVirtualizedComponentProps
     }
   };
 
-  const { renderStartIndex, renderEndIndex } = getRenderedItemIndex();
-  const { getItemKeyIndex } = useKeyIndex(renderStartIndex, renderEndIndex);
-
   const nodes = useMemo<ReactElement[]>(() => {
     let items: ReactElement[] = [];
+    console.log(renderStartIndex, renderEndIndex);
     for (let i = renderStartIndex; i <= renderEndIndex; i++) {
       const keyIndex = getItemKeyIndex(i);
-      const style = getItemStyle(i);
+      const style = getItemStyle(i, payload);
       const element = createElement(children, {
         key: `key${keyIndex}`,
         index: i,
@@ -316,13 +334,7 @@ const VariableSizeVirtualizedComponent: FC<VariableSizeVirtualizedComponentProps
     // 考虑优化，空位置的优化
     items = items.filter((v) => v);
     return items;
-  }, [
-    renderStartIndex,
-    renderEndIndex,
-    children,
-    getItemKeyIndex,
-    getItemStyle,
-  ]);
+  }, [renderStartIndex, renderEndIndex, children, getItemKeyIndex, payload]);
 
   const containerStyle: CSSProperties = {
     ...containerBaseStyle,

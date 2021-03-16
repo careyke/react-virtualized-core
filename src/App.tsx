@@ -4,6 +4,7 @@ import classes from "./App.less";
 // import MutativeKeyVirtualizedList from "./examples/MutativeKeyVirtualizedList";
 // import StableKeyVirtualizedList from "./examples/StableKeyVirtualizedList";
 import StableKeyVaribleVirtualizeList from "./examples/StableKeyVaribleVirtualizeList";
+import MutativeKeyVariableVirtualizedList from "./examples/MutativeKeyVariableVirtualizedList";
 
 const App: FC = () => {
   return (
@@ -24,6 +25,12 @@ const App: FC = () => {
         <div>StableKeyVariableSize</div>
         <div className={classes.item}>
           <StableKeyVaribleVirtualizeList />
+        </div>
+      </div>
+      <div>
+        <div>MutativeKeyVariableSize</div>
+        <div className={classes.item}>
+          <MutativeKeyVariableVirtualizedList />
         </div>
       </div>
     </div>

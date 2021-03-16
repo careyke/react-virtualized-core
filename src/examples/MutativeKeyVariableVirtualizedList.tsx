@@ -1,7 +1,6 @@
-import React, { FC, useRef, useEffect } from "react";
+import React, { FC, useEffect, useRef } from "react";
+import { VariableSizeList } from "react-window";
 import { List, Avatar } from "antd";
-
-import VariableSizeVirtualizedComponent from "../core/VariableSizeVirtualizedComponent";
 
 const { Item } = List;
 
@@ -9,7 +8,9 @@ const rowHeights = new Array(3000)
   .fill(true)
   .map(() => 80 + Math.round(Math.random() * 80));
 
-const getItemSize = (index: number) => rowHeights[index];
+const getItemSize = (index: number) => {
+  return rowHeights[index];
+};
 
 // const newRowHeights = new Array(3000)
 //   .fill(true)
@@ -17,7 +18,7 @@ const getItemSize = (index: number) => rowHeights[index];
 
 // const getNewItemSize = (index: number) => newRowHeights[index];
 
-const StableKeyVaribleVirtualizedList: FC = () => {
+const MutativeKeyVariableVirtualizedList: FC = () => {
   const bodyRef = useRef<HTMLDivElement>(null);
   // const [count, setCount] = useState(3000);
   // const [handleClick, setHandleClick] = useState(() => getItemSize);
@@ -30,7 +31,7 @@ const StableKeyVaribleVirtualizedList: FC = () => {
     const observer = new MutationObserver((mutationsList) => {
       const mutationRecord = mutationsList[0];
       console.log(
-        "StableKeyVirtualizedList",
+        "MutativeKeyVirtualizedList",
         "add nodes:",
         mutationRecord.addedNodes.length,
         "remove nodes:",
@@ -44,15 +45,16 @@ const StableKeyVaribleVirtualizedList: FC = () => {
       observer.disconnect();
     };
   }, []);
+
   return (
     <>
       {/* <button onClick={handleBtnClick}>click</button> */}
-      <VariableSizeVirtualizedComponent
+      <VariableSizeList
         width={400}
         height={600}
         itemCount={3000}
         innerRef={bodyRef}
-        itemSizeGetter={getItemSize}
+        itemSize={getItemSize}
       >
         {({ index, style }) => {
           return (
@@ -67,9 +69,9 @@ const StableKeyVaribleVirtualizedList: FC = () => {
             </Item>
           );
         }}
-      </VariableSizeVirtualizedComponent>
+      </VariableSizeList>
     </>
   );
 };
 
-export default StableKeyVaribleVirtualizedList;
+export default MutativeKeyVariableVirtualizedList;

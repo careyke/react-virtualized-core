@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useRef } from "react";
+import React, { FC, useRef } from "react";
 import { FixedSizeList } from "react-window";
 import { List, Avatar } from "antd";
 
@@ -7,24 +7,24 @@ const { Item } = List;
 const MutativeKeyVirtualizedList: FC = () => {
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const observer = new MutationObserver((mutationsList) => {
-      const mutationRecord = mutationsList[0];
-      console.log(
-        "MutativeKeyVirtualizedList",
-        "add nodes:",
-        mutationRecord.addedNodes.length,
-        "remove nodes:",
-        mutationRecord.removedNodes.length
-      );
-    });
-    if (bodyRef.current) {
-      observer.observe(bodyRef.current, { childList: true });
-    }
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
+  // useEffect(() => {
+  //   const observer = new MutationObserver((mutationsList) => {
+  //     const mutationRecord = mutationsList[0];
+  //     console.log(
+  //       "MutativeKeyVirtualizedList",
+  //       "add nodes:",
+  //       mutationRecord.addedNodes.length,
+  //       "remove nodes:",
+  //       mutationRecord.removedNodes.length
+  //     );
+  //   });
+  //   if (bodyRef.current) {
+  //     observer.observe(bodyRef.current, { childList: true });
+  //   }
+  //   return () => {
+  //     observer.disconnect();
+  //   };
+  // }, []);
 
   return (
     <FixedSizeList
